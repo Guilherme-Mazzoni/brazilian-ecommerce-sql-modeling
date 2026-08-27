@@ -1,0 +1,37 @@
+-- =====================================================================
+-- PROJETO: brazilian-ecommerce-sql-modeling
+-- SCRIPT: busca_orfaos.sql
+-- OBJETIVO: Identificar registros órfãos (quebras de integridade de FK)
+-- NOTA: O resultado ideal para todas as queries deste script é ZERO (0).
+-- =====================================================================
+
+-- 1. Auditoria de Pedidos sem Clientes Cadastrados
+-- Verifica se há algum pedido apontando para um cliente inexistente [8, 9].
+SELECT COUNT(*) AS pedidos_orfaos
+FROM olist_orders_dataset o
+LEFT JOIN olist_customers_dataset c ON o.customer_id = c.customer_id
+WHERE c.customer_id IS NULL;
+
+
+-- 2. Auditoria de Itens de Pedidos sem Produto no Catálogo
+-- Garante que todo item vendido aponta para um produto de fato cadastrado [10, 11].
+SELECT COUNT(*) AS itens_sem_produto
+FROM olist_order_items_dataset i
+LEFT JOIN olist_products_dataset p ON i.product_id = p.product_id
+WHERE p.product_id IS NULL;
+
+
+-- 3. Auditoria de Itens de Pedidos sem Vendedor Ativo
+-- Garante que todo item aponta para um lojista cadastrado na base [10, 12].
+SELECT COUNT(*) AS itens_sem_vendedor
+FROM olist_order_items_dataset i
+LEFT JOIN olist_sellers_dataset s ON i.seller_id = s.seller_id
+WHERE s.seller_id IS NULL;
+
+
+-- 4. Auditoria de Pagamentos Órfãos
+-- Garante que não existem transações financeiras sem um pedido associado [13].
+SELECT COUNT(*) AS pagamentos_orfaos
+FROM olist_order_payments_dataset p
+LEFT JOIN olist_orders_dataset o ON p.order_id = o.order_id
+WHERE o.order_id IS NULL;

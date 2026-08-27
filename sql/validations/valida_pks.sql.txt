@@ -1,0 +1,58 @@
+-- =====================================================================
+-- PROJETO: brazilian-ecommerce-sql-modeling
+-- SCRIPT: valida_pks.sql
+-- OBJETIVO: Testar integridade física, unicidade e não-nulidade das PKs
+-- =====================================================================
+
+-- 1. Validação de Chave Primária Simples (Exemplo: customers)
+-- Retorna '1' se for válida (única e não-nula) e '0' se falhar [2].
+SELECT 
+    CASE 
+        WHEN COUNT(*) = COUNT(DISTINCT customer_id) 
+             AND COUNT(customer_id) = COUNT(*) THEN 1 
+        ELSE 0 
+    END AS is_pk_valid,
+    COUNT(*) - COUNT(customer_id) AS total_nulos,
+    COUNT(*) AS total_linhas
+FROM olist_customers_dataset;
+
+
+-- 2. Validação de Chave Primária Composta Clássica (Exemplo: order_items)
+-- A combinação de order_id + order_item_id precisa ser única [3, 4].
+SELECT 
+    COUNT(*) AS total_linhas,
+    COUNT(DISTINCT (order_id || '-' || order_item_id)) AS combinacoes_unicas,
+    CASE 
+        WHEN COUNT(*) = COUNT(DISTINCT (order_id || '-' || order_item_id))
+             AND COUNT(order_id) = COUNT(*)
+             AND COUNT(order_item_id) = COUNT(*) THEN 1
+        ELSE 0
+    END AS is_composite_pk_valid
+FROM olist_order_items_dataset;
+
+
+-- 3. Validação Física da Tabela de Reviews (Caso Especial)
+-- Comprova que a chave de avaliações deve ser Composta (review_id + order_id) 
+-- para acomodar a regra de negócio de carrinhos multi-vendedor [5, 6].
+SELECT 
+    COUNT(*) AS total_linhas,
+    COUNT(DISTINCT (review_id || '-' || order_id)) AS combinacoes_unicas,
+    CASE 
+        WHEN COUNT(*) = COUNT(DISTINCT (review_id || '-' || order_id))
+             AND COUNT(review_id) = COUNT(*)
+             AND COUNT(order_id) = COUNT(*) THEN 1
+        ELSE 0 
+    END AS is_review_pk_valid
+FROM olist_order_reviews_dataset;
+
+
+-- 4. Validação de Ausência de PK (Caso Geográfico)
+-- Comprova empiricamente que geolocation_zip_code_prefix se repete e não é PK [7].
+SELECT
+    COUNT(*) AS total_linhas,
+    COUNT(DISTINCT geolocation_zip_code_prefix) AS ceps_unicos,
+    CASE 
+        WHEN COUNT(*) > COUNT(DISTINCT geolocation_zip_code_prefix) THEN 'Não é PK (Esperado)'
+        ELSE 'É PK'
+    END AS avaliacao_pelas_linhas
+FROM olist_geolocation_dataset;
