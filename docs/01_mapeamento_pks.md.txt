@@ -1,0 +1,146 @@
+#### Introdução Metodológica: Validação Física de Chaves vs. Premissas Teóricas
+
+No design de bancos de dados relacionais e na engenharia de dados (*Analytics Engineering*), existe uma distinção crucial entre a **modelagem conceitual (teórica)** e a **modelagem física (real)**. Na teoria, diagramas e dicionários de dados definem as chaves primárias (Primary Keys - PKs) baseando-se em premissas de negócios. No entanto, a integridade de um data warehouse profissional exige que todas as premissas teóricas sejam validadas fisicamente contra os dados reais armazenados antes do carregamento em produção.
+
+A validação física consiste em testar sistematicamente as duas propriedades fundamentais de uma chave primária:
+1. **Unicidade:** Cada valor da chave candidata deve aparecer exatamente uma vez na tabela.
+2. **Não Nulidade:** A coluna definida como chave não pode conter valores nulos (NULLs).
+
+Ignorar essa etapa de validação física e confiar cegamente em premissas teóricas frequentemente resulta em quebra de constraints no banco de dados, falhas catastróficas em pipelines de dados e a disseminação de dados duplicados ou incorretos em dashboards executivos.
+
+---
+## 2. Tabela de Mapeamento de Chaves Primárias (PKs)
+
+Após a validação física dos dados reais do ecossistema Olist, as chaves primárias oficiais foram mapeadas e classificadas conforme a tabela abaixo:
+
+| Tabela                              | Chave Primária (PK)               | Tipo de Chave | Status de Validação                              |
+| :---------------------------------- | :-------------------------------- | :------------ | :----------------------------------------------- |
+| `olist_customers_dataset`           | `customer_id`                     | Simples       | Validada                                         |
+| `olist_orders_dataset`              | `order_id`                        | Simples       | Validada                                         |
+| `olist_products_dataset`            | `product_id`                      | Simples       | Validada                                         |
+| `olist_sellers_dataset`             | `seller_id`                       | Simples       | Validada                                         |
+| `product_category_name_translation` | `product_category_name`           | Simples       | Validada                                         |
+| `olist_order_items_dataset`         | `order_id` + `order_item_id`      | Composta      | Validada                                         |
+| `olist_order_payments_dataset`      | `order_id` + `payment_sequential` | Composta      | Validada                                         |
+| `olist_order_reviews_dataset`       | `review_id` + `order_id`          | Composta      | Validada após ajuste de modelagem física         |
+| `olist_geolocation_dataset`         | Nenhuma PK Natural                | Nenhuma       | Validada (Há CEPs com múltiplas coordenadas) [3] |
+
+---
+
+## 3. Detalhamento Técnico: O Caso do Dataset de Reviews (`olist_order_reviews_dataset`)
+
+Durante o processo inicial de modelagem de dados teórica, a coluna `review_id` foi classificada como uma Chave Primária Simples candidata para a tabela de avaliações. Contudo, ao submetermos a coluna à query de validação de unicidade física, o resultado retornou:
+
+* **is_pk_valid** = `0`
+* **total_nulos** = `0`
+* **total_linhas** = `70000` (ou o tamanho da amostra testada)
+
+Isso significa que, embora **não existam registros nulos**, existem registros duplicados do mesmo ID de avaliação (`review_id`).
+
+### Causa Raiz: Carrinhos de Compra Multi-Vendedor
+Esse comportamento não é um erro do banco de dados, mas sim um reflexo de uma regra de negócio do e-commerce real. Quando um cliente realiza uma compra contendo itens fornecidos por **vendedores diferentes**, a plataforma Olist gera pedidos distintos (`order_id`) para separar o faturamento, controle de estoque e logística de cada lojista 
+
+Entretanto, do ponto de vista da experiência do consumidor, ele faz **uma única avaliação** do carrinho de compras no momento em que responde à pesquisa de satisfação [6]. O sistema da plataforma, consequentemente, replica o mesmo `review_id` para todos os `order_id` associados àquela transação [6].
+
+#### Exemplo Real de Duplicidade nos Dados:
+* **`review_id`**: `2172867fd5b1a55f98fe4608e1547b4b`
+* **Pedidos associados (`order_id`)**:
+  1. `559d606ac642899e44550f194fec7e08` (Nota: 5)
+  2. `ac6e61336e852cdc45fe59ada3763a66` (Nota: 5)
+  3. `e11ba7fd8fe0728dcd89efddcda9fb11` (Nota: 5)
+
+Como vemos, o registro é idêntico em nota, mas vincula-se a três compras distintas. Se definíssemos `review_id` sozinho como PK, a inserção falharia por quebra de restrição de unicidade.
+
+### Solução Proposta para a Camada de Persistência Física:
+A solução ideal e profissional para a modelagem física desta tabela é a criação de uma **Chave Primária Composta** contendo a união de:
+
+$$ \text{PK} = \{\text{review\_id}, \text{order\_id}\} $$
+
+Esta combinação garante que cada linha correspondente a uma avaliação de pedido único seja unicamente identificável, permitindo relacionamentos perfeitamente íntegros no banco de dados e evitando a duplicação em agregações e análises futuras.
+
+---
+
+## 4. Queries SQL Profissionais de Validação
+
+Seguem os blocos de códigos estruturados e prontos para execução em ambientes de homologação ou produção para auditar a saúde e a integridade de cada tipo de relacionamento identificado.
+
+### A. Validação de Chave Primária Simples
+*Aplica-se a: `customer_id`, `order_id`, `product_id`, `seller_id`, `product_category_name`.*
+
+```sql
+SELECT 
+    CASE 
+        -- Verifica se a contagem de linhas totais é estritamente igual à contagem de valores distintos
+        -- e se não há discrepância que indique valores NULLs nas chaves candidatas
+        WHEN COUNT(*) = COUNT(DISTINCT customer_id) 
+             AND COUNT(customer_id) = COUNT(*) THEN 1 
+        ELSE 0 
+    END AS is_pk_valid,
+    COUNT(*) - COUNT(customer_id) AS total_nulos,
+    COUNT(*) AS total_linhas
+FROM olist_customers_dataset;
+````
+
+### B. Validação de Chave Primária Composta Clássica
+
+_Aplica-se a:_ _order_id_ _+_ _order_item_id_ _(Tabela de itens do pedido)__._
+
+```
+SELECT 
+    -- Total de linhas cadastradas
+    COUNT(*) AS total_linhas,
+    -- Quantidade de combinações exclusivas de chaves
+    COUNT(DISTINCT (order_id || '-' || order_item_id)) AS combinacoes_unicas,
+    -- Validação de integridade física da chave composta
+    CASE 
+        WHEN COUNT(*) = COUNT(DISTINCT (order_id || '-' || order_item_id))
+             AND COUNT(order_id) = COUNT(*)
+             AND COUNT(order_item_id) = COUNT(*) THEN 1
+        ELSE 0
+    END AS is_composite_pk_valid
+FROM olist_order_items_dataset;
+```
+
+### C. Validação da Nova Chave Composta de Reviews
+
+_Aplica-se a:_ _review_id_ _+_ _order_id_ _(Tabela de avaliações após re-modelagem física)._
+
+```
+SELECT 
+    COUNT(*) AS total_linhas,
+    COUNT(DISTINCT (review_id || '-' || order_id)) AS combinacoes_unicas,
+    CASE 
+        WHEN COUNT(*) = COUNT(DISTINCT (review_id || '-' || order_id))
+             AND COUNT(review_id) = COUNT(*)
+             AND COUNT(order_id) = COUNT(*) THEN 1
+        ELSE 0 
+    END AS is_review_pk_valid
+FROM olist_order_reviews_dataset;
+```
+
+### D. Validação de Ausência de PK (Detecção de Duplicidades por CEP)
+
+_Aplica-se a:_ _olist_geolocation_dataset_ _via prefixo de CEP__._
+
+```
+-- Query para comprovar que o prefixo de CEP não possui propriedade de PK (retorna duplicados)
+SELECT
+    COUNT(*) AS total_linhas,
+    COUNT(DISTINCT geolocation_zip_code_prefix) AS ceps_unicos,
+    CASE 
+        -- Se o total de linhas for maior que os CEPs únicos, o campo se repete (não é PK)
+        WHEN COUNT(*) > COUNT(DISTINCT geolocation_zip_code_prefix) THEN 'Não é PK (Esperado)'
+        ELSE 'É PK'
+    END AS avaliacao_pelas_linhas
+FROM olist_geolocation_dataset;
+
+-- Query analítica complementar para identificar a distribuição geográfica dos CEPs repetidos
+SELECT
+    geolocation_zip_code_prefix,
+    COUNT(*) AS quantidade_coordenadas
+FROM olist_geolocation_dataset
+GROUP BY geolocation_zip_code_prefix
+HAVING COUNT(*) > 1
+ORDER BY quantidade_coordenadas DESC
+LIMIT 10;
+```
