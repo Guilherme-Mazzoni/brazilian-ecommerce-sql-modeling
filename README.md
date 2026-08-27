@@ -11,7 +11,7 @@ O grande diferencial deste projeto é que ele não se limita a apenas responder 
 O projeto está organizado da seguinte forma para facilitar a leitura técnica e a execução das consultas:
 
 ```text
-meu-projeto-olist-sql/
+brazilian-ecommerce-sql-modeling/
 │
 ├── README.md                     # Visão geral do projeto e principais aprendizados
 │
@@ -31,19 +31,19 @@ meu-projeto-olist-sql/
 
 ---
 
-## 🧠 Principais Descobertas de Arquitetura
+##  Principais Descobertas de Arquitetura
 
-### 1. O Caso Crítico de `olist_order_reviews_dataset` 💬
+### 1. O Caso Crítico de `olist_order_reviews_dataset` 
 *   **Premissa Teórica:** A coluna `review_id` deveria atuar como uma Chave Primária Simples da tabela de avaliações.
 *   **Descoberta Prática:** A validação física revelou duplicidades legítimas do mesmo `review_id` associado a diferentes pedidos (`order_id`).
 *   **Causa Raiz (Negócio):** Carrinhos de compras multi-vendedor. Quando um cliente compra de lojistas diferentes em uma mesma sessão, o sistema gera múltiplos `order_id` por questões logísticas, mas apenas uma pesquisa de satisfação (`review_id`). O sistema então replica a avaliação para todos os pedidos daquela transação.
 *   **Solução:** Implementação de uma **Chave Primária Composta** unindo `{review_id, order_id}` para assegurar a integridade do banco de dados e evitar que análises de satisfação dupliquem dados financeiros.
 
-### 2. A Tabela de Geolocalização (`olist_geolocation_dataset`) 📍
+### 2. A Tabela de Geolocalização (`olist_geolocation_dataset`) 
 *   **Descoberta Prática:** O prefixo de CEP (`geolocation_zip_code_prefix`) possui múltiplas coordenadas espaciais para o mesmo código. 
 *   **Solução:** A tabela foi mapeada estritamente como uma **dimensão auxiliar de apoio geográfico**, desprovida de PK física, evitando quebras catastróficas de constraint em pipelines de carga.
 
-### 3. A Prevenção contra "Explosão de Dados" (Produto Cartesiano) ⚠️
+### 3. A Prevenção contra "Explosão de Dados" (Produto Cartesiano) 
 *   Unir tabelas transacionais paralelas de grãos diferentes, como itens de pedidos (1:N) e parcelamentos de pagamentos (1:N), gera uma duplicação cartesiana silenciosa que infla os números de faturamento da empresa.
 *   **Boa Prática Aplicada:** Pré-agregação de dados utilizando agrupamentos cirúrgicos antes de efetuar junções lógicas finais.
 
@@ -57,7 +57,7 @@ meu-projeto-olist-sql/
 
 ---
 
-## 🎯 Como Executar este Projeto
+##  Como Executar este Projeto
 
 1.  **Obtenha os Dados:** Baixe o conjunto de dados público da Olist (disponível no Kaggle).
 2.  **Crie o Banco de Dados:** Execute as instruções de criação de tabelas e carregue os dados em seu SGDB de preferência (PostgreSQL, SQLite, MySQL, etc.).
