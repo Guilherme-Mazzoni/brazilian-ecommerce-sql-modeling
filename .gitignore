@@ -1,0 +1,35 @@
+# =====================================================================
+# GITIGNORE - PORTFÓLIO ANALYTICS & SQL OLIST
+# =====================================================================
+
+# Bancos de dados e Arquivos de Dados Volumosos
+*.csv
+*.xlsx
+*.parquet
+*.json
+*.sqlite
+*.db
+*.sql.gz
+*.tar.gz
+*.zip
+
+# Diretórios e Logs do DBeaver
+.dbeaver/
+*.log
+dbeaver-debug.txt
+
+# Arquivos de Sistema e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Arquivos temporários e de persistência do Obsidian
+.obsidian/workspace
+.obsidian/workspace.json
+.obsidian/backups/
+
+# Backups e rascunhos de consultas locais
+*backup*
+*temp*
+*.tmp
